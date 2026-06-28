@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    container_name: resume-craft
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./data:/app/data
+      - ./output:/app/output

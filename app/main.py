@@ -33,19 +33,51 @@ TEMPLATES_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+PROVIDER_META = {
+    "opencode": {
+        "label": "OpenCode",
+        "default_model": "deepseek-v4-flash-free",
+        "needs_key": True,
+        "default_base": "https://opencode.ai/zen/v1",
+    },
+    "openai": {
+        "label": "OpenAI",
+        "default_model": "gpt-4o",
+        "needs_key": True,
+        "default_base": "https://api.openai.com/v1",
+    },
+    "ollama": {
+        "label": "Ollama (local)",
+        "default_model": "llama3",
+        "needs_key": False,
+        "default_base": "http://localhost:11434",
+    },
+    "custom": {
+        "label": "Custom",
+        "default_model": "",
+        "needs_key": True,
+        "default_base": "",
+    },
+}
 
-def load_config():
+# In-memory runtime config — seeded from config.json at import time
+CONFIG: dict = {}
+
+def _load_config_from_file():
     config_path = BASE_DIR / "config.json"
     if config_path.exists():
         return json.loads(config_path.read_text(encoding="utf-8"))
-    return {"model": "deepseek-v4-flash", "api_key": "", "output_dir": "output"}
+    return {}
+
+CONFIG.update(_load_config_from_file())
 
 
 def get_ai() -> AIProvider:
-    config = load_config()
     return AIProvider(
-        model=config.get("model", "deepseek-v4-flash"),
-        api_key=config.get("api_key", ""),
+        provider=CONFIG.get("provider", "opencode"),
+        api_key=CONFIG.get("api_key", ""),
+        model=CONFIG.get("model", ""),
+        api_base=CONFIG.get("api_base", ""),
     )
 
 
@@ -72,6 +104,57 @@ async def index(request: Request):
     return templates.TemplateResponse(
         request, "index.html", {"request": request},
     )
+
+
+@app.get("/api/config")
+async def get_config():
+    meta = {}
+    for key, val in PROVIDER_META.items():
+        meta[key] = {
+            "label": val["label"],
+            "default_model": val["default_model"],
+            "needs_key": val["needs_key"],
+            "default_base": val["default_base"],
+        }
+    return {
+        "configured": bool(CONFIG.get("api_key") or CONFIG.get("provider") == "ollama"),
+        "current": {
+            "provider": CONFIG.get("provider", "opencode"),
+            "model": CONFIG.get("model", ""),
+            "api_base": CONFIG.get("api_base", ""),
+        },
+        "providers": meta,
+    }
+
+
+@app.post("/api/config")
+async def save_config(data: dict):
+    provider = data.get("provider", "opencode")
+    api_key = data.get("api_key", "")
+    model = data.get("model", "")
+    api_base = data.get("api_base", "")
+
+    meta = PROVIDER_META.get(provider)
+    if not meta:
+        raise HTTPException(400, f"Unknown provider '{provider}'")
+    if meta["needs_key"] and not api_key:
+        raise HTTPException(400, f"API key required for provider '{provider}'")
+
+    CONFIG.update({
+        "provider": provider,
+        "api_key": api_key,
+        "model": model,
+        "api_base": api_base,
+    })
+
+    # Persist so it survives a restart
+    config_path = BASE_DIR / "config.json"
+    try:
+        config_path.write_text(json.dumps(CONFIG, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+    return {"status": "ok"}
 
 
 @app.post("/upload-cv")

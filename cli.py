@@ -28,8 +28,10 @@ def load_config():
 def get_ai() -> AIProvider:
     config = load_config()
     return AIProvider(
-        model=config.get("model", "deepseek-v4-flash"),
+        provider=config.get("provider", "opencode"),
         api_key=config.get("api_key", ""),
+        model=config.get("model", ""),
+        api_base=config.get("api_base", ""),
     )
 
 

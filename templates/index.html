@@ -8,6 +8,41 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
+  <div class="config-overlay hidden" id="config-overlay">
+    <div class="config-card">
+      <h2>Configure API</h2>
+      <p class="sub">Choose your AI provider and enter your API key to start optimizing.</p>
+
+      <div class="config-field">
+        <label for="cfg-provider">Provider</label>
+        <select id="cfg-provider"></select>
+      </div>
+
+      <div class="config-field config-field-hidden" id="cfg-key-field">
+        <label for="cfg-key">API Key</label>
+        <input type="password" id="cfg-key" placeholder="sk-..." autocomplete="off">
+        <div class="hint" id="cfg-key-hint"></div>
+      </div>
+
+      <div class="config-field">
+        <label for="cfg-model">Model</label>
+        <input type="text" id="cfg-model" placeholder="e.g. deepseek-v4-flash-free">
+        <div class="hint">Leave empty to use the provider default</div>
+      </div>
+
+      <div class="config-field config-field-hidden" id="cfg-base-field">
+        <label for="cfg-base">API Base URL</label>
+        <input type="text" id="cfg-base" placeholder="https://api.example.com/v1">
+        <div class="hint">Required for custom providers</div>
+      </div>
+
+      <div class="config-actions">
+        <button class="btn btn-success" id="cfg-save-btn">Save &amp; Continue</button>
+        <div class="status" id="cfg-status"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="container">
     <div class="site-header">
       <h1>CV Optimizer</h1>
@@ -137,7 +172,7 @@
           <div class="preview-content" id="preview-content"></div>
         </div>
       </div>
-      <button class="btn btn-success" id="new-loop-btn" style="margin-top:14px; display:none;">&#128260; Optimize Another CV</button>
+      <button class="btn btn-success" id="new-loop-btn" style="margin-top:14px; display:none;">Optimize Another CV</button>
     </div>
   </div>
 
@@ -552,8 +587,121 @@
 
     document.getElementById('new-loop-btn').addEventListener('click', resetLoop);
 
+    // ── Config modal ───────────────────────────────────────────
+    const cfgOverlay = document.getElementById('config-overlay');
+    const cfgProvider = document.getElementById('cfg-provider');
+    const cfgKey = document.getElementById('cfg-key');
+    const cfgKeyField = document.getElementById('cfg-key-field');
+    const cfgKeyHint = document.getElementById('cfg-key-hint');
+    const cfgModel = document.getElementById('cfg-model');
+    const cfgBase = document.getElementById('cfg-base');
+    const cfgBaseField = document.getElementById('cfg-base-field');
+    const cfgSaveBtn = document.getElementById('cfg-save-btn');
+    const cfgStatus = document.getElementById('cfg-status');
+
+    let providerMeta = {};
+
+    function updateConfigFields() {
+      const val = cfgProvider.value;
+      const meta = providerMeta[val];
+      if (!meta) return;
+
+      // API key field
+      if (meta.needs_key) {
+        cfgKeyField.classList.remove('config-field-hidden');
+        cfgKeyHint.textContent = meta.default_base ? 'Get a key at ' + meta.label : 'Set in your config';
+      } else {
+        cfgKeyField.classList.add('config-field-hidden');
+      }
+
+      // API base field
+      if (!meta.default_base) {
+        cfgBaseField.classList.remove('config-field-hidden');
+      } else {
+        cfgBaseField.classList.add('config-field-hidden');
+        cfgBase.value = meta.default_base;
+      }
+
+      // Model — pre-fill with default, keep user override if they already typed
+      if (!cfgModel.value || cfgModel.dataset.lastProvider !== val) {
+        cfgModel.value = meta.default_model || '';
+      }
+      cfgModel.dataset.lastProvider = val;
+    }
+
+    async function checkConfig() {
+      try {
+        const res = await fetch('/api/config');
+        const data = await res.json();
+
+        providerMeta = data.providers || {};
+
+        // Populate provider dropdown
+        cfgProvider.innerHTML = '';
+        for (const [key, meta] of Object.entries(providerMeta)) {
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = meta.label;
+          cfgProvider.appendChild(opt);
+        }
+
+        // Restore current selection if already partially configured
+        if (data.current?.provider && providerMeta[data.current.provider]) {
+          cfgProvider.value = data.current.provider;
+          cfgModel.value = data.current.model || '';
+          cfgBase.value = data.current.api_base || '';
+          cfgKey.value = '';
+        }
+
+        updateConfigFields();
+
+        if (!data.configured) {
+          cfgOverlay.classList.remove('hidden');
+        }
+      } catch (e) {
+        // If the server isn't running, don't block — just hide modal
+      }
+    }
+
+    cfgProvider.addEventListener('change', updateConfigFields);
+
+    cfgSaveBtn.addEventListener('click', async () => {
+      cfgSaveBtn.disabled = true;
+      cfgStatus.textContent = 'Saving...';
+      cfgStatus.className = 'status';
+
+      const payload = {
+        provider: cfgProvider.value,
+        api_key: cfgKey.value,
+        model: cfgModel.value,
+        api_base: cfgBase.value,
+      };
+
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          cfgOverlay.classList.add('hidden');
+          cfgStatus.textContent = '';
+        } else {
+          const err = await res.json();
+          cfgStatus.className = 'status error';
+          cfgStatus.textContent = err.detail || 'Save failed';
+        }
+      } catch (e) {
+        cfgStatus.className = 'status error';
+        cfgStatus.textContent = 'Connection error';
+      } finally {
+        cfgSaveBtn.disabled = false;
+      }
+    });
+
     // ── Init button states on page load ──────────────────────
     setButtonState();
+    checkConfig();
   </script>
 </body>
 </html>

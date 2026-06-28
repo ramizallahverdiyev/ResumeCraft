@@ -1,24 +1,51 @@
-import json
 import time
 import httpx
 
-API_BASE = "https://opencode.ai/zen/v1"
+PROVIDERS = {
+    "opencode": {
+        "base_url": "https://opencode.ai/zen/v1",
+        "default_model": "deepseek-v4-flash-free",
+        "auth": "bearer",
+    },
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o",
+        "auth": "bearer",
+    },
+    "ollama": {
+        "base_url": "http://localhost:11434",
+        "default_model": "llama3",
+        "auth": None,
+    },
+    "custom": {
+        "base_url": None,
+        "default_model": None,
+        "auth": "bearer",
+    },
+}
+
 MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 
 class AIProvider:
-    def __init__(self, model: str = "deepseek-v4-flash", api_key: str = ""):
-        self.model = model
+    def __init__(self, provider: str = "opencode", api_key: str = "", model: str = "", api_base: str = ""):
+        info = PROVIDERS.get(provider, PROVIDERS["custom"])
+
+        base_url = api_base or info["base_url"]
+        if not base_url:
+            raise ValueError(f"No api_base specified for provider '{provider}'. Set 'api_base' in config.json")
+
+        self.model = model or info["default_model"]
+        if not self.model:
+            raise ValueError(f"No model specified for provider '{provider}'. Set 'model' in config.json")
+
         self.api_key = api_key
-        self._client = httpx.Client(
-            base_url=API_BASE,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=120,
-        )
+        headers = {"Content-Type": "application/json"}
+        if info["auth"] == "bearer" and api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        self._client = httpx.Client(base_url=base_url, headers=headers, timeout=120)
 
     def chat(
         self,
