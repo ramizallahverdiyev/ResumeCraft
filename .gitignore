@@ -1,0 +1,27 @@
+# Personal / sensitive
+config.json
+original-cv.pdf
+
+# CV data (auto-generated on upload)
+data/*
+!data/.gitkeep
+
+# Output PDFs (auto-generated on optimize)
+output/*
+!output/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Internal docs (not for public)
+docs/
+
+# Old prompts (no longer used)
+prompts/
+
+# OS
+.DS_Store
+Thumbs.db

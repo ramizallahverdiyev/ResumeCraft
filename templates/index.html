@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CV Optimizer</title>
+  <link rel="stylesheet" href="/static/style.css?v=2">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="site-header">
+      <h1>CV Optimizer</h1>
+      <p>Tailor your CV to any job in seconds</p>
+    </div>
+
+    <div class="steps-bar">
+      <div class="step-indicator active" id="step1-indicator">
+        <span class="num">1</span>
+        <span class="label">Upload CV</span>
+      </div>
+      <div class="step-indicator" id="step2-indicator">
+        <span class="num">2</span>
+        <span class="label">Paste Job</span>
+      </div>
+      <div class="step-indicator" id="step3-indicator">
+        <span class="num">3</span>
+        <span class="label">Download</span>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="col">
+        <!-- Step 1: CV -->
+        <div class="card" id="step1-card">
+          <div class="card-header">
+            <span class="step-badge">1</span>
+            <h2>Your CV</h2>
+          </div>
+          <div class="cv-row">
+            <button class="btn" id="load-cv-btn">&#128194; Load Saved</button>
+            <span class="sep">or</span>
+            <label class="cv-file-wrap" id="cv-file-wrap">
+              <input type="file" id="cv-file" accept=".pdf">
+              <span class="cv-file-label" id="cv-file-label">&#128196; Choose PDF...</span>
+            </label>
+            <button class="btn btn-success" id="upload-btn" disabled>Upload</button>
+          </div>
+          <div class="spinner-wrap">
+            <div class="spinner" id="upload-spinner"></div>
+            <span class="spinner-text" id="upload-spinner-text"></span>
+          </div>
+          <div class="status" id="upload-status"></div>
+        </div>
+
+        <!-- Extracted CV -->
+        <div class="card" id="cv-card" style="display:none;">
+          <div class="card-header">
+            <span class="step-badge" style="background:#059669;">&#10003;</span>
+            <h2>Extracted CV</h2>
+            <span class="status-badge ready">Ready</span>
+          </div>
+          <div id="cv-preview" class="cv-preview"></div>
+          <div class="cv-edit" id="cv-edit">
+            <textarea id="cv-edit-textarea"></textarea>
+            <div class="actions-row">
+              <button class="btn btn-sm" id="save-cv-btn">Save Changes</button>
+              <button class="btn btn-sm btn-outline" id="cancel-edit-btn">Cancel</button>
+            </div>
+          </div>
+          <div class="actions-row">
+            <button class="btn btn-sm btn-outline" id="edit-cv-btn">Edit CV Data</button>
+          </div>
+          <div class="status" id="cv-status"></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <!-- Step 2: Paste JD -->
+        <div class="card" id="step2-card">
+          <div class="card-header">
+            <span class="step-badge">2</span>
+            <h2>Job Description</h2>
+          </div>
+          <textarea id="jd-text" placeholder="Paste the job description here...&#10;&#10;Tip: Include the role title, company name, requirements, and responsibilities for best results."></textarea>
+          <div class="actions-row">
+            <button class="btn" id="parse-jd-btn">Parse JD</button>
+          </div>
+          <div class="spinner-wrap">
+            <div class="spinner" id="jd-spinner"></div>
+            <span class="spinner-text" id="jd-spinner-text"></span>
+          </div>
+          <div class="status" id="jd-status"></div>
+        </div>
+
+        <!-- Structured JD -->
+        <div class="card" id="jd-card" style="display:none;">
+          <div class="card-header">
+            <span class="step-badge" style="background:#059669;">&#10003;</span>
+            <h2>Parsed Job Description</h2>
+          </div>
+          <div class="jd-structured" id="jd-structured"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom: Optimize + Results -->
+    <div class="card" id="optimize-card" style="display:none;">
+      <div class="card-header">
+        <span class="step-badge">3</span>
+        <h2>Optimize</h2>
+      </div>
+      <button class="btn btn-success" id="optimize-btn">Optimize CV</button>
+      <div class="spinner-wrap">
+        <div class="spinner" id="optimize-spinner"></div>
+        <span class="spinner-text" id="optimize-spinner-text"></span>
+      </div>
+      <div class="status" id="optimize-status"></div>
+    </div>
+
+    <div class="card" id="result-card" style="display:none;">
+      <div class="card-header">
+        <span class="step-badge" style="background:#059669;">&#10003;</span>
+        <h2>Optimized CV Ready</h2>
+      </div>
+      <div class="result-section">
+        <div class="result-header">
+          <div class="info">&#10003; CV optimized successfully</div>
+          <a class="download-link" id="download-link" href="#">&#11015; Download PDF</a>
+        </div>
+        <div class="changes-section" id="changes-section" style="display:none;">
+          <h3>What changed</h3>
+          <ul class="changes-list" id="changes-list"></ul>
+        </div>
+        <div class="preview-section">
+          <h3>Preview</h3>
+          <div class="preview-content" id="preview-content"></div>
+        </div>
+      </div>
+      <button class="btn btn-success" id="new-loop-btn" style="margin-top:14px; display:none;">&#128260; Optimize Another CV</button>
+    </div>
+  </div>
+
+  <script>
+    // ── State machine ──────────────────────────────────────────
+    // states: 'cv' | 'ready' | 'optimize' | 'done'
+    let state = 'cv';
+    let cvData = null;
+    let jdParsed = false;
+
+    const loadCvBtn = document.getElementById('load-cv-btn');
+    const uploadBtn = document.getElementById('upload-btn');
+    const parseJdBtn = document.getElementById('parse-jd-btn');
+    const optimizeBtn = document.getElementById('optimize-btn');
+    const cvFile = document.getElementById('cv-file');
+
+    function setButtonState() {
+      const optCard = document.getElementById('optimize-card');
+      if (state === 'cv') {
+        loadCvBtn.disabled = false;
+        uploadBtn.disabled = !cvFile.files.length;
+        parseJdBtn.disabled = true;
+        optimizeBtn.disabled = true;
+        optCard.style.display = 'none';
+      } else if (state === 'ready') {
+        loadCvBtn.disabled = false;
+        uploadBtn.disabled = !cvFile.files.length;
+        parseJdBtn.disabled = jdParsed;
+        optimizeBtn.disabled = false;
+        optCard.style.display = 'block';
+      } else if (state === 'optimize') {
+        loadCvBtn.disabled = true;
+        uploadBtn.disabled = true;
+        parseJdBtn.disabled = true;
+        optimizeBtn.disabled = false;
+        optCard.style.display = 'block';
+      } else { // done
+        loadCvBtn.disabled = true;
+        uploadBtn.disabled = true;
+        parseJdBtn.disabled = true;
+        optimizeBtn.disabled = true;
+        optCard.style.display = 'none';
+      }
+    }
+
+    function setStep(n) {
+      for (let i = 1; i <= 3; i++) {
+        const el = document.getElementById('step' + i + '-indicator');
+        el.classList.remove('active', 'done');
+        if (i < n) el.classList.add('done');
+        else if (i === n) el.classList.add('active');
+      }
+    }
+
+    function resetLoop() {
+      state = 'cv';
+      jdParsed = false;
+      setStep(1);
+      document.getElementById('step1-card').style.display = 'block';
+      document.getElementById('cv-card').style.display = 'none';
+      document.getElementById('step2-card').style.display = 'block';
+      document.getElementById('jd-card').style.display = 'none';
+      document.getElementById('optimize-card').style.display = 'none';
+      document.getElementById('result-card').style.display = 'none';
+      document.getElementById('new-loop-btn').style.display = 'none';
+      document.getElementById('jd-text').value = '';
+      document.getElementById('upload-status').textContent = '';
+      document.getElementById('jd-status').textContent = '';
+      document.getElementById('optimize-status').textContent = '';
+      cvFileWrap.classList.remove('has-file');
+      cvFileLabel.textContent = '\u{1F4C4} Choose PDF...';
+      cvFile.value = '';
+      setButtonState();
+    }
+
+    // ── Load saved CV ────────────────────────────────────────
+    const loadCvStatus = document.getElementById('upload-status');
+    const loadCvSpinner = document.getElementById('upload-spinner');
+    const loadCvSpinnerText = document.getElementById('upload-spinner-text');
+
+    loadCvBtn.addEventListener('click', async () => {
+      loadCvBtn.disabled = true;
+      loadCvSpinner.classList.add('show');
+      loadCvSpinnerText.textContent = 'Loading saved CV...';
+      loadCvStatus.textContent = '';
+
+      try {
+        const res = await fetch('/cv-data');
+        if (res.ok) {
+          const data = await res.json();
+          cvData = data.cv_data;
+          setStep(2);
+          state = 'ready';
+          loadCvStatus.className = 'status ok';
+          loadCvStatus.textContent = 'Saved CV loaded';
+          showCVPreview(data.cv_data, data.cv_markdown);
+        } else {
+          loadCvStatus.className = 'status error';
+          loadCvStatus.textContent = 'No saved CV found. Upload one instead.';
+        }
+      } catch (e) {
+        loadCvStatus.className = 'status error';
+        loadCvStatus.textContent = 'Connection error';
+      } finally {
+        loadCvSpinner.classList.remove('show');
+        loadCvSpinnerText.textContent = '';
+        setButtonState();
+      }
+    });
+
+    // ── File upload ──────────────────────────────────────────
+    const cvFileWrap = document.getElementById('cv-file-wrap');
+    const cvFileLabel = document.getElementById('cv-file-label');
+    const uploadStatus = document.getElementById('upload-status');
+    const uploadSpinner = document.getElementById('upload-spinner');
+    const uploadSpinnerText = document.getElementById('upload-spinner-text');
+
+    cvFile.addEventListener('change', () => {
+      if (cvFile.files.length) {
+        const f = cvFile.files[0];
+        cvFileLabel.textContent = '\u{1F4C4} ' + f.name + ' (' + (f.size / 1024).toFixed(0) + ' KB)';
+        cvFileWrap.classList.add('has-file');
+      } else {
+        cvFileWrap.classList.remove('has-file');
+        cvFileLabel.textContent = '\u{1F4C4} Choose PDF...';
+      }
+      setButtonState();
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      const file = cvFile.files[0];
+      if (!file) return;
+
+      uploadBtn.disabled = true;
+      uploadSpinner.classList.add('show');
+      uploadSpinnerText.classList.add('show');
+      uploadStatus.textContent = '';
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/upload-cv', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+          uploadStatus.className = 'status ok';
+          uploadStatus.textContent = 'CV extracted and saved';
+          setStep(2);
+          state = 'ready';
+          cvData = data.cv_data;
+          showCVPreview(data.cv_data, data.cv_markdown);
+        } else {
+          uploadStatus.className = 'status error';
+          uploadStatus.textContent = data.detail || 'Error extracting CV';
+        }
+      } catch (e) {
+        uploadStatus.className = 'status error';
+        uploadStatus.textContent = 'Connection error';
+      } finally {
+        uploadSpinner.classList.remove('show');
+        uploadSpinnerText.classList.remove('show');
+        setButtonState();
+      }
+    });
+
+    function showCVPreview(data, markdown) {
+      const card = document.getElementById('cv-card');
+      const preview = document.getElementById('cv-preview');
+      card.style.display = 'block';
+      preview.innerHTML = markdown ? marked.parse(markdown) : '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+      document.getElementById('cv-edit-textarea').value = JSON.stringify(data, null, 2);
+    }
+
+    // Edit CV
+    document.getElementById('edit-cv-btn').addEventListener('click', () => {
+      document.getElementById('cv-preview').style.display = 'none';
+      document.getElementById('cv-edit').style.display = 'block';
+      document.getElementById('edit-cv-btn').style.display = 'none';
+    });
+
+    document.getElementById('cancel-edit-btn').addEventListener('click', () => {
+      document.getElementById('cv-preview').style.display = 'block';
+      document.getElementById('cv-edit').style.display = 'none';
+      document.getElementById('edit-cv-btn').style.display = 'inline-flex';
+    });
+
+    document.getElementById('save-cv-btn').addEventListener('click', async () => {
+      const textarea = document.getElementById('cv-edit-textarea');
+      const cvStatus = document.getElementById('cv-status');
+
+      try {
+        const data = JSON.parse(textarea.value);
+        const res = await fetch('/cv-data', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          cvStatus.className = 'status ok';
+          cvStatus.textContent = 'CV data updated';
+          const previewRes = await fetch('/cv-data');
+          const previewData = await previewRes.json();
+          document.getElementById('cv-preview').innerHTML = marked.parse(previewData.cv_markdown);
+          document.getElementById('cv-preview').style.display = 'block';
+          document.getElementById('cv-edit').style.display = 'none';
+          document.getElementById('edit-cv-btn').style.display = 'inline-flex';
+        } else {
+          cvStatus.className = 'status error';
+          cvStatus.textContent = 'Error saving';
+        }
+      } catch (e) {
+        cvStatus.className = 'status error';
+        cvStatus.textContent = 'Invalid JSON';
+      }
+    });
+
+    // ── Parse JD ─────────────────────────────────────────────
+    const jdSpinner = document.getElementById('jd-spinner');
+    const jdSpinnerText = document.getElementById('jd-spinner-text');
+    const jdStatus = document.getElementById('jd-status');
+
+    parseJdBtn.addEventListener('click', async () => {
+      const text = document.getElementById('jd-text').value;
+      if (!text.trim()) return;
+
+      parseJdBtn.disabled = true;
+      jdSpinner.classList.add('show');
+      jdSpinnerText.classList.add('show');
+      jdSpinnerText.textContent = 'Parsing job description...';
+      jdStatus.textContent = '';
+
+      const formData = new FormData();
+      formData.append('jd_text', text);
+
+      try {
+        const res = await fetch('/parse-jd', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+          showJD(data.jd_data);
+          jdParsed = true;
+          state = 'ready';
+          jdStatus.className = 'status ok';
+          jdStatus.textContent = 'Job description parsed';
+        } else {
+          jdStatus.className = 'status error';
+          jdStatus.textContent = data.detail || 'Error parsing JD';
+        }
+      } catch (e) {
+        jdStatus.className = 'status error';
+        jdStatus.textContent = 'Connection error';
+      } finally {
+        jdSpinner.classList.remove('show');
+        jdSpinnerText.classList.remove('show');
+        setButtonState();
+      }
+    });
+
+    function showJD(data) {
+      const card = document.getElementById('jd-card');
+      const container = document.getElementById('jd-structured');
+      card.style.display = 'block';
+
+      let html = '';
+      if (data.role) html += '<div class="jd-field"><strong>Role:</strong> ' + data.role + '</div>';
+      if (data.company) html += '<div class="jd-field"><strong>Company:</strong> ' + data.company + '</div>';
+
+      const mh = data.must_have || {};
+      if (mh.skills?.length) {
+        html += '<div class="jd-field"><strong>Must-Have Skills</strong><div class="jd-tags">' +
+          mh.skills.map(r => '<span class="jd-tag">' + r + '</span>').join('') + '</div></div>';
+      }
+      if (data.responsibilities?.length) {
+        html += '<div class="jd-field"><strong>Responsibilities</strong><div class="jd-tags">' +
+          data.responsibilities.map(r => '<span class="jd-tag">' + r + '</span>').join('') + '</div></div>';
+      }
+      const nh = data.nice_to_have || {};
+      if (nh.skills?.length) {
+        html += '<div class="jd-field"><strong>Nice to have</strong><div class="jd-tags">' +
+          nh.skills.map(r => '<span class="jd-tag">' + r + '</span>').join('') + '</div></div>';
+      }
+      container.innerHTML = html || '<div class="empty-state">No structured data found</div>';
+    }
+
+    // ── Optimize ──────────────────────────────────────────────
+    const optimizeSpinner = document.getElementById('optimize-spinner');
+    const optimizeSpinnerText = document.getElementById('optimize-spinner-text');
+    const optimizeStatus = document.getElementById('optimize-status');
+
+    optimizeBtn.addEventListener('click', async () => {
+      const text = document.getElementById('jd-text').value;
+      if (!text.trim()) {
+        optimizeStatus.textContent = 'Please paste a job description first';
+        return;
+      }
+
+      optimizeBtn.disabled = true;
+      optimizeSpinner.classList.add('show');
+      optimizeSpinnerText.textContent = 'Optimizing CV... (may take a minute)';
+      optimizeStatus.textContent = '';
+
+      const formData = new FormData();
+      formData.append('jd_text', text);
+
+      try {
+        const res = await fetch('/optimize', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+          optimizeStatus.className = 'status ok';
+          optimizeStatus.textContent = 'CV optimized!';
+          setStep(3);
+          state = 'done';
+          showResults(data);
+        } else if (res.ok && data.status === 'pdf_error') {
+          optimizeStatus.className = 'status ok';
+          optimizeStatus.textContent = 'CV optimized, but PDF failed.';
+          setStep(3);
+          state = 'done';
+          showResults(data, true);
+        } else {
+          optimizeStatus.className = 'status error';
+          optimizeStatus.textContent = data.detail || 'Error optimizing';
+          setButtonState();
+        }
+      } catch (e) {
+        optimizeStatus.className = 'status error';
+        optimizeStatus.textContent = 'Connection error';
+        setButtonState();
+      } finally {
+        optimizeSpinner.classList.remove('show');
+        optimizeSpinnerText.textContent = '';
+      }
+    });
+
+    function showResults(data, hasPdfError) {
+      const card = document.getElementById('result-card');
+      card.style.display = 'block';
+
+      if (hasPdfError) {
+        // Show error and retry button instead of download link
+        document.getElementById('download-link').style.display = 'none';
+        let errEl = document.getElementById('pdf-error-msg');
+        if (!errEl) {
+          errEl = document.createElement('div');
+          errEl.id = 'pdf-error-msg';
+          errEl.className = 'status error';
+          errEl.style.marginBottom = '10px';
+          card.querySelector('.result-header').appendChild(errEl);
+        }
+        errEl.textContent = data.pdf_error || 'PDF generation failed';
+        errEl.style.display = 'block';
+
+        let retryBtn = document.getElementById('retry-pdf-btn');
+        if (!retryBtn) {
+          retryBtn = document.createElement('button');
+          retryBtn.id = 'retry-pdf-btn';
+          retryBtn.className = 'btn';
+          retryBtn.textContent = 'Retry PDF Generation';
+          retryBtn.style.marginLeft = '10px';
+          retryBtn.addEventListener('click', async () => {
+            retryBtn.disabled = true;
+            retryBtn.textContent = 'Generating...';
+            errEl.textContent = '';
+            try {
+              const r = await fetch('/retry-pdf', { method: 'POST' });
+              const d = await r.json();
+              if (d.status === 'ok') {
+                document.getElementById('download-link').href = d.download_url;
+                document.getElementById('download-link').download = d.filename;
+                document.getElementById('download-link').style.display = 'inline-flex';
+                errEl.style.display = 'none';
+                retryBtn.style.display = 'none';
+              } else {
+                errEl.textContent = d.detail || 'Retry failed';
+              }
+            } catch (e) {
+              errEl.textContent = 'Connection error during retry';
+            } finally {
+              retryBtn.disabled = false;
+              retryBtn.textContent = 'Retry PDF Generation';
+            }
+          });
+          card.querySelector('.result-header').appendChild(retryBtn);
+        } else {
+          retryBtn.style.display = 'inline-flex';
+        }
+      } else {
+        document.getElementById('download-link').href = data.download_url;
+        document.getElementById('download-link').download = data.filename;
+        document.getElementById('download-link').style.display = 'inline-flex';
+        const errEl = document.getElementById('pdf-error-msg');
+        if (errEl) errEl.style.display = 'none';
+        const retryBtn = document.getElementById('retry-pdf-btn');
+        if (retryBtn) retryBtn.style.display = 'none';
+      }
+
+      const changesList = document.getElementById('changes-list');
+      const changesSection = document.getElementById('changes-section');
+      if (data.changes?.length) {
+        changesSection.style.display = 'block';
+        changesList.innerHTML = data.changes.map(c => '<li>' + c + '</li>').join('');
+      } else {
+        changesSection.style.display = 'none';
+      }
+
+      document.getElementById('preview-content').innerHTML = marked.parse(data.preview || 'Preview not available');
+
+      document.getElementById('new-loop-btn').style.display = 'inline-flex';
+
+      setButtonState();
+      document.getElementById('result-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    document.getElementById('new-loop-btn').addEventListener('click', resetLoop);
+
+    // ── Init button states on page load ──────────────────────
+    setButtonState();
+  </script>
+</body>
+</html>

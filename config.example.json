@@ -1,0 +1,6 @@
+{
+  "provider": "opencode",
+  "api_key": "your-api-key-here",
+  "model": "deepseek-v4-flash-free",
+  "output_dir": "output"
+}
