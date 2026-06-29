@@ -70,7 +70,7 @@ No fabrication — every rewrite stays truthful to your actual experience.
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/resume-craft.git
+git clone https://github.com/ramizallahverdiyev/ResumeCraft.git
 cd resume-craft
 
 # Create a virtual environment (recommended)
